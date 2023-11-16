@@ -1,0 +1,1 @@
+Noticed up to a 7.2 second gap between writes on the client
