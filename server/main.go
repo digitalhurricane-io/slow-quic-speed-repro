@@ -16,10 +16,30 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"runtime/pprof"
 	"time"
 )
 
 func Run(port int) {
+
+	logFile, err := os.Create("./log/server_app.log")
+	if err != nil {
+		log.Fatal("failed to create log file: ", err)
+	}
+	defer logFile.Close()
+	log.SetOutput(logFile)
+
+	profFile, err := os.Create("./log/server_cpu_profile.prof")
+	if err != nil {
+		log.Fatal("failed to create prof file: ", err)
+	}
+	defer profFile.Close()
+
+	if err := pprof.StartCPUProfile(profFile); err != nil {
+		log.Fatal("could not start CPU profile: ", err)
+	}
+	defer pprof.StopCPUProfile()
+
 	udpConn, err := net.ListenUDP("udp4", &net.UDPAddr{Port: port})
 	if err != nil {
 		log.Fatal("failed to listen on udp")
@@ -43,7 +63,7 @@ func Run(port int) {
 			if p == logging.PerspectiveClient {
 				role = "client"
 			}
-			filename := fmt.Sprintf("./qlog/log_%x_%s_%d.qlog", connID, role, time.Now().UnixMicro())
+			filename := fmt.Sprintf("./log/log_%x_%s_%d.qlog", connID, role, time.Now().UnixMicro())
 			f, err := os.Create(filename)
 			if err != nil {
 				log.Println(fmt.Errorf("failed to create file for qlog: %w", err))
@@ -58,19 +78,19 @@ func Run(port int) {
 		log.Fatal(fmt.Errorf("failed to start quic listener: %w", err))
 	}
 
-	for {
-		var conn quic.Connection
+	var conn quic.Connection
 
-		conn, err = listener.Accept(context.Background())
-		if err != nil {
-			log.Println(fmt.Errorf("failed to get conn from quic listener: %w", err))
-			return
-		}
-
-		log.Println("peer conn accepted")
-
-		go handleConn(conn)
+	conn, err = listener.Accept(context.Background())
+	if err != nil {
+		log.Println(fmt.Errorf("failed to get conn from quic listener: %w", err))
+		return
 	}
+
+	log.Println("peer conn accepted")
+
+	handleConn(conn)
+
+	log.Println("DONE")
 }
 
 func handleConn(conn quic.Connection) {

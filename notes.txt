@@ -1,1 +1,11 @@
 Noticed up to a 7.2 second gap between writes on the client
+
+-----
+
+Log file dir on android: /storage/emulated/0/Android/data/com.example.myapplication/files
+Command to retrieve log: adb pull /path/to/file
+
+-----
+
+With the client buffer at 1,000 bytes, we get ok transfer speeds of about 1Mb/s but if
+we increase the buffer size to 32,000, we get slow transfer speed.
