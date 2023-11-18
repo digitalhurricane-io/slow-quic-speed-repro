@@ -1,110 +1,37 @@
 package client
 
 import (
-	"context"
-	"crypto/tls"
 	"fmt"
-	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/logging"
-	"github.com/quic-go/quic-go/qlog"
 	"log"
-	"os"
-	"runtime/pprof"
+	"net"
 	"time"
 )
 
-func Start(addr, logDir string) {
+func Start(addr string) {
 
-	logFile, err := os.Create(fmt.Sprintf("%s/client_app.log", logDir))
+	conn, err := net.Dial("udp", addr)
 	if err != nil {
-		log.Fatal("failed to create log file: ", err)
-	}
-	defer logFile.Close()
-	log.SetOutput(logFile)
-
-	profFile, err := os.Create(fmt.Sprintf("%s/client_cpu_profile.prof", logDir))
-	if err != nil {
-		log.Fatal("failed to create prof file: ", err)
-	}
-	defer profFile.Close()
-
-	if err := pprof.StartCPUProfile(profFile); err != nil {
-		log.Fatal("could not start CPU profile: ", err)
-	}
-	defer pprof.StopCPUProfile()
-
-	// with these values, android stream times out with:
-	// err writing to test stream: timeout: no recent network activity
-	//quicConfig := &quic.Config{
-	//	KeepAlivePeriod: 2 * time.Second,
-	//	MaxIdleTimeout:  10 * time.Second,
-	//}
-
-	quicConfig := &quic.Config{
-		KeepAlivePeriod: 5 * time.Second,
-		MaxIdleTimeout:  20 * time.Second,
-		Tracer: func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) *logging.ConnectionTracer {
-			role := "server"
-			if p == logging.PerspectiveClient {
-				role = "client"
-			}
-			filename := fmt.Sprintf("%s/log_%x_%s_%d.qlog", logDir, connID, role, time.Now().UnixMicro())
-			f, err := os.Create(filename)
-			if err != nil {
-				log.Println(fmt.Errorf("failed to create file for qlog: %w", err))
-				return nil
-			}
-			return qlog.NewConnectionTracer(f, p, connID)
-		},
-	}
-
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"z"}, // must match server
-	}
-
-	time.Sleep(time.Second)
-
-	log.Println("connecting to server")
-
-	quicConn, err := quic.DialAddr(context.Background(), addr, tlsConfig, quicConfig)
-	if err != nil {
-		log.Println(fmt.Errorf("failed to dial server: %w", err))
-		//continue
+		log.Println(err)
 		return
 	}
+	defer conn.Close()
 
-	stream, err := quicConn.OpenStream()
-	if err != nil {
-		log.Println(fmt.Errorf("failed to open stream: %w", err))
-		//continue
-		return
-	}
+	var numPacketsToSend = 10_000
 
-	veryStart := time.Now()
-	buf := make([]byte, 32_000)
+	message := make([]byte, 1439) // most quic packets were sent with this size
+
 	start := time.Now()
-	for i := 0; i < 100; i++ {
 
-		n, err := stream.Write(buf)
+	var packetCount int
+	for i := 0; i < numPacketsToSend; i++ {
+		// Send a packet
+		_, err = conn.Write(message)
 		if err != nil {
-			log.Println(fmt.Errorf("err writing to test stream: %w", err))
+			log.Println("Stopping packet sending: ", err)
 			return
 		}
-
-		log.Printf("wrote %d bytes to stream. ms between writes: %d\n", n, time.Since(start).Milliseconds())
-		start = time.Now()
+		packetCount++
 	}
 
-	log.Printf("DONE. ms taken to complete: %d", time.Since(veryStart).Milliseconds())
-
-	err = stream.Close()
-	if err != nil {
-		log.Println(fmt.Errorf("err closing stream: %w", err))
-	}
-
-	err = quicConn.CloseWithError(0, "going away")
-	if err != nil {
-		log.Println(fmt.Errorf("err closing conn: %w", err))
-	}
+	fmt.Printf("Took %d ms to send %d packets\n", time.Since(start).Milliseconds(), numPacketsToSend)
 }
