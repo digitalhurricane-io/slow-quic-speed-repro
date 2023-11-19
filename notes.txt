@@ -9,3 +9,8 @@ Command to retrieve log: adb pull /path/to/file
 
 With the client buffer at 1,000 bytes, we get ok transfer speeds of about 1Mb/s but if
 we increase the buffer size to 32,000, we get slow transfer speed.
+
+-----
+
+Conclusion: Some android devices simply have major packet loss with UDP. I tried 2
+different routers just to be sure.
